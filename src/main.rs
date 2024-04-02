@@ -1,39 +1,29 @@
 pub mod parser;
 pub mod packet;
 pub mod writer;
-use crate::parser::PacketParser;
-use crate::packet::DNSPacket;
-    // let mut f = File::open("response_packet.txt")?;
-
-    // println!(parser.buffer);
-    // io::stdin().read_line(&mut guess).expect("Failed to read line");
-    
-    // let guess: u32 = match guess.trim().parse() {
-    //     Ok(num) => num,
-    //     Err(_) => continue,
-
-    // };
-    // Open the text file
+pub mod stub_resolver;
+use crate::packet::{DNSPacket, QueryType};
 use std::net::UdpSocket;
 
-fn main() -> std::io::Result<()> {
-    {
-        let socket = UdpSocket::bind("127.0.0.1:2053")?;
+fn main() {
+    let socket = UdpSocket::bind("0.0.0.0:2053").expect("Error binding to localhost");
 
-        loop {
-        let mut parser = PacketParser::new();
-        let (amt, src) = socket.recv_from(&mut parser.buffer)?;
-        
-        // PRINTING
-        // let mut packet_string = "".to_owned();
-        // for x in 0..511 {
-        //     let x_str = parser.buffer[x].to_string().to_owned();
-        //     packet_string.push_str(&x_str);
-        // } 
-        // println!("{packet_string}");
+    loop {
+        // Need to use a try here
+        stub_resolver::handle_query(&socket);
+    }
+} 
 
-        let packet = DNSPacket::get_dns_packet(&mut parser);
-        println!("{:#?}", packet.header);
+
+fn test_query() {
+    let qname = "yahoo.com";
+    let qtype = QueryType::MX;
+    let response = stub_resolver::lookup(qname, qtype);
+    print_packet(response);
+}
+
+fn print_packet(packet: DNSPacket) {
+    println!("{:#?}", packet.header);
 
         for q in packet.questions {
             println!("{:#?}", q);
@@ -47,12 +37,7 @@ fn main() -> std::io::Result<()> {
         for rec in packet.resources {
             println!("{:#?}", rec);
         }
-
-        }
-        
-
-        // socket.send_to(buf, &src)?;
-    } // the socket is closed here
-    // Ok(())
 }
+
+
 

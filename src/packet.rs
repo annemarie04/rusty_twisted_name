@@ -1,5 +1,7 @@
 use crate::parser::PacketParser;
-use std::net::Ipv4Addr;
+use crate::writer::PacketWriter;
+
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 // ________________________________________________ HEADER _______________________________________________________________
 // RCODE - Response Code FLAG
@@ -39,6 +41,14 @@ impl OpCode {
             1 => OpCode::IQUERY,
             2 => OpCode::STATUS,
             0 | _ => OpCode::QUERY,
+        }
+    }
+
+    pub fn to_num(&self) -> u8 {
+        match *self {
+            OpCode::IQUERY => 1,
+            OpCode::STATUS => 2,
+            OpCode::QUERY => 0,
         }
     }
 }
@@ -116,6 +126,31 @@ impl DNSHeader {
         self.ar_count = parser.parse_u16();
     }
 
+    pub fn write_header(&self, writer: &mut PacketWriter){
+        writer.write_u16(self.id);
+
+        writer.write_u8(
+            (self.recursion_desired as u8)
+                | ((self.truncation as u8) << 1)
+                | ((self.authoritative_answer as u8) << 2)
+                | (self.opcode.to_num() << 3)
+                | ((self.query as u8) << 7) as u8,
+        );
+
+        writer.write_u8(
+            (self.rcode as u8)
+                | ((self.checking_disabled as u8) << 4)
+                | ((self.authed_data as u8) << 5)
+                | ((self.zero as u8) << 6)
+                | ((self.recursion_available as u8) << 7),
+        );
+
+        writer.write_u16(self.qd_count);
+        writer.write_u16(self.an_count);
+        writer.write_u16(self.ns_count);
+        writer.write_u16(self.ar_count);
+    }
+
 }
 
 // ________________________________________________ QUERY _______________________________________________________________
@@ -124,7 +159,11 @@ impl DNSHeader {
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Copy)]
 pub enum QueryType {
     UNKNOWN(u16), 
-    A, // 1
+    A,      // 1
+    NS,     // 2
+    CNAME,  // 5
+    MX,     // 15
+    AAAA,   // 28
 }
 
 impl QueryType {
@@ -132,12 +171,21 @@ impl QueryType {
         match *self {
             QueryType::UNKNOWN(x) => x,
             QueryType::A => 1,
+            QueryType::NS => 2,
+            QueryType::CNAME => 3,
+            QueryType::CNAME => 5,
+            QueryType::MX => 15,
+            QueryType::AAAA => 28
         }
     }
 
     pub fn get_query_type(num: u16) -> QueryType {
         match num {
             1 => QueryType::A,
+            2 => QueryType::NS,
+            5 => QueryType::CNAME,
+            15 => QueryType::MX,
+            28 => QueryType::AAAA,
             _ => QueryType::UNKNOWN(num),
         }
     }
@@ -165,6 +213,14 @@ impl DNSQuestion {
         self.qtype = QueryType::get_query_type(parser.parse_u16());
         self.class = parser.parse_u16();
     }
+
+    pub fn write_question(&self, buffer: &mut PacketWriter){
+        buffer.write_qname(&self.qname);
+
+        let qtype_num = self.qtype.to_num();
+        buffer.write_u16(qtype_num);
+        buffer.write_u16(1);
+    }
 }
 // ________________________________________________ ANSWER _______________________________________________________________
 // DNS Record
@@ -176,32 +232,56 @@ pub enum DNSRecord {
         qtype: u16, 
         data_len: u16, 
         ttl: u32,
-    },
+    }, // 0
     A {
         domain: String, 
         addr: Ipv4Addr, 
         ttl: u32,
-    },
+    }, // 1
+    NS {
+        domain: String,
+        host: String, 
+        ttl: u32,
+    }, // 2
+    CNAME {
+        domain: String, 
+        host: String, 
+        ttl: u32, 
+    }, // 5
+    MX {
+        domain: String, 
+        priority: u16, 
+        host: String, 
+        ttl: u32,
+    }, // 15
+    AAAA {
+        domain: String,
+        addr: Ipv6Addr, 
+        ttl: u32,
+    }, // 28
+
 }
 
 impl DNSRecord {
     pub fn parse_record(parser: &mut PacketParser) -> DNSRecord {
         let domain = parser.parse_qname();
-
+        // print!("Qname: {domain}");
         let qtype_num = parser.parse_u16();
+        // print!("Qtype: {qtype_num}");
         let qtype = QueryType::get_query_type(qtype_num);
-        let _ = parser.parse_u16();
+        let class = parser.parse_u16();
         let ttl = parser.parse_u32();
+        // print!("Ttl: {ttl}");
         let data_length = parser.parse_u16();
 
         match qtype {
             QueryType::A => {
                 let raw_address = parser.parse_u32();
                 let address = Ipv4Addr::new(
-                    ((raw_address >> 24) * 0xFF) as u8,
-                    ((raw_address >> 16) * 0xFF) as u8,
-                    ((raw_address >> 8) * 0xFF) as u8,
-                    ((raw_address >> 0) * 0xFF) as u8, 
+                    ((raw_address >> 24) & 0xFF) as u8,
+                    ((raw_address >> 16) & 0xFF) as u8,
+                    ((raw_address >> 8) & 0xFF) as u8,
+                    ((raw_address >> 0) & 0xFF) as u8, 
                 );
 
                 DNSRecord::A {
@@ -210,7 +290,58 @@ impl DNSRecord {
                     ttl: ttl,
                 }
             }
+            QueryType::AAAA => {
+                let raw_addr1 = parser.parse_u32();
+                let raw_addr2 = parser.parse_u32();
+                let raw_addr3= parser.parse_u32();
+                let raw_addr4 = parser.parse_u32();
+                let addr = Ipv6Addr::new(
+                    ((raw_addr1 >> 16) & 0xFFFF) as u16,
+                    ((raw_addr1 >> 0) & 0xFFFF) as u16,
+                    ((raw_addr2 >> 16) & 0xFFFF) as u16,
+                    ((raw_addr2 >> 0) & 0xFFFF) as u16,
+                    ((raw_addr3 >> 16) & 0xFFFF) as u16,
+                    ((raw_addr3 >> 0) & 0xFFFF) as u16,
+                    ((raw_addr4 >> 16) & 0xFFFF) as u16,
+                    ((raw_addr4 >> 0) & 0xFFFF) as u16,
+                );
 
+                DNSRecord::AAAA {
+                    domain: domain, 
+                    addr: addr,
+                    ttl: ttl,
+                }
+            }
+            QueryType::NS => {
+                let mut ns = parser.parse_qname();
+
+                DNSRecord::NS {
+                    domain: domain,
+                    host: ns,
+                    ttl: ttl,
+                }
+
+            }
+            QueryType::CNAME => {
+                let mut cname = parser.parse_qname();
+
+                DNSRecord::CNAME {
+                    domain: domain, 
+                    host: cname, 
+                    ttl: ttl,
+                }
+            }
+            QueryType::MX => {
+                let priority = parser.parse_u16();
+                let mut mx = parser.parse_qname();
+
+                DNSRecord::MX {
+                    domain: domain, 
+                    priority: priority, 
+                    host: mx,
+                    ttl: ttl,
+                }
+            }
             QueryType::UNKNOWN(_) => {
                 parser.jump(data_length as usize);
 
@@ -222,6 +353,106 @@ impl DNSRecord {
                 }
             }
         }
+    }
+
+    pub fn write_record(&self, writer: &mut PacketWriter) -> usize {
+        let start_position = writer.position;
+
+        match *self {
+            DNSRecord::A {
+                ref domain,
+                ref addr,
+                ttl,
+            } => {
+                writer.write_qname(domain);
+                writer.write_u16(QueryType::A.to_num());
+                writer.write_u16(1);
+                writer.write_u32(ttl);
+                writer.write_u16(4);
+
+                let octets = addr.octets();
+                writer.write_u8(octets[0]);
+                writer.write_u8(octets[1]);
+                writer.write_u8(octets[2]);
+                writer.write_u8(octets[3]);
+            }
+            DNSRecord::NS { 
+                ref domain, 
+                ref host, 
+                ttl 
+            } => {
+                writer.write_qname(domain);
+                writer.write_u16(QueryType::NS.to_num());
+                writer.write_u16(1);
+                writer.write_u32(ttl);
+
+                let pos = writer.position();
+                writer.write_u16(0);
+
+                writer.write_qname(host);
+
+                let size = writer.position() - (pos + 2);
+                writer.set_u16(pos, size as u16);
+            }
+            DNSRecord::CNAME {
+                ref domain, 
+                ref host,
+                ttl,
+            } => {
+                writer.write_qname(domain);
+                writer.write_u16(QueryType::CNAME.to_num());
+                writer.write_u16(1);
+                writer.write_u32(ttl);
+
+                let pos = writer.position();
+                writer.write_u16(0);
+                
+                writer.write_qname(host);
+
+                let size = writer.position() - (pos + 2);
+                writer.set_u16(pos, size as u16);
+            }
+            DNSRecord::MX {
+                ref domain,
+                priority, 
+                ref host, 
+                ttl, 
+            } => {
+                writer.write_qname(domain);
+                writer.write_u16(QueryType::MX.to_num());
+                writer.write_u16(1);
+                writer.write_u32(ttl);
+
+                let pos = writer.position();
+                writer.write_u16(0);
+                
+                writer.write_u16(priority);
+                writer.write_qname(host);
+
+                let size = writer.position();
+                writer.set_u16(pos, size as u16);
+            }
+            DNSRecord::AAAA {
+                ref domain, 
+                ref addr, 
+                ttl,
+            } => {
+                writer.write_qname(domain);
+                writer.write_u16(QueryType::AAAA.to_num());
+                writer.write_u16(1);
+                writer.write_u32(ttl);
+                writer.write_u16(16);
+
+                for octet in &addr.segments() {
+                    writer.write_u16(*octet);
+                }
+            }
+            DNSRecord::UNKNOWN { .. } => {
+                println!("Skipping record: {:?}", self);
+            }
+        }
+
+        writer.position - start_position
     }
 }
 
@@ -275,5 +506,27 @@ impl DNSPacket {
         }
 
         dns_packet
+    }
+
+    pub fn write_dns_packet(&mut self, writer: &mut PacketWriter) {
+        self.header.qd_count = self.questions.len() as u16;
+        self.header.an_count = self.answers.len() as u16;
+        self.header.ns_count = self.authorities.len() as u16;
+        self.header.ar_count = self.resources.len() as u16;
+
+        self.header.write_header(writer);
+
+        for question in &self.questions {
+            question.write_question(writer);
+        }
+        for rec in &self.answers {
+            rec.write_record(writer);
+        }
+        for rec in &self.authorities {
+            rec.write_record(writer);
+        }
+        for rec in &self.resources {
+            rec.write_record(writer);
+        }
     }
 }
