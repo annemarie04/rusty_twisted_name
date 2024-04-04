@@ -1,10 +1,10 @@
-use std::net::UdpSocket;
-
+use std::net::{Ipv4Addr, UdpSocket};
+use crate::recursive_resolver::recursive_lookup;
 use crate::{packet::{DNSPacket, DNSQuestion, QueryType, RCode}, parser::PacketParser, writer::PacketWriter};
-
-pub fn lookup(qname: &str, qtype: QueryType) -> DNSPacket{
+ 
+pub fn lookup(qname: &str, qtype: QueryType, server:(Ipv4Addr, u16)) -> DNSPacket{
     // Server to query
-    let server = ("8.8.8.8", 53);
+    // let server = ("8.8.8.8", 53);
 
     // Set up socket connection to server
     let socket = UdpSocket::bind(("0.0.0.0", 43210)).expect("Couldn't connect to server");
@@ -63,8 +63,8 @@ pub fn handle_query(socket: &UdpSocket) {
     if let Some(question) = request.questions.pop() {
         println!("Received query: {:?}", question);
 
-        if let result = lookup(&question.qname, question.qtype) {
-            packet.questions.push(question);
+        if let result = recursive_lookup(&question.qname, question.qtype) {
+            packet.questions.push(question.clone());
             packet.header.rcode = result.header.rcode;
 
             for record in result.answers {

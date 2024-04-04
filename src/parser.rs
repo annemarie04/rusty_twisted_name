@@ -4,7 +4,7 @@ use std::{fmt::Error, thread::current};
 
 // This is a Packet Parser for UDP Packets of 512bytes 
 pub struct PacketParser {
-    pub buffer: [u8; 512],
+    pub buffer: [u8; 4096],
     pub position: usize,
 }
 
@@ -15,7 +15,7 @@ impl PacketParser {
     // -> sets parsing position to 0
     pub fn new() -> PacketParser {
         PacketParser {
-            buffer: [0; 512],
+            buffer: [0; 4096],
             position: 0,
         }
     }
