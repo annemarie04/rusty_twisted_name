@@ -47,12 +47,12 @@ pub fn build_query(qname: &str, qtype: QueryType) -> PacketWriter {
 }
 
 // Handles an incoming packet
-pub fn handle_query(socket: &UdpSocket) {
-    let mut packet_parser = PacketParser::new();
+pub fn handle_query(mut request: DNSPacket) -> DNSPacket {
+    // let mut packet_parser = PacketParser::new();
 
-    let (_, src) = socket.recv_from(&mut packet_parser.buffer).expect("Receiving packet error");
+    // let (_, src) = socket.recv_from(&mut packet_parser.buffer).expect("Receiving packet error");
 
-    let mut request = DNSPacket::get_dns_packet(&mut packet_parser);
+    // let mut request = DNSPacket::get_dns_packet(&mut packet_parser);
 
     let mut packet = DNSPacket::new();
     packet.header.id = request.header.id;
@@ -90,11 +90,8 @@ pub fn handle_query(socket: &UdpSocket) {
     }
 
     // Encode the response and send it
-    let mut response_writer = PacketWriter::new();
-    packet.write_dns_packet(&mut response_writer);
+    
 
-    let len = response_writer.position();
-    let data = response_writer.get_range(0, len);
-
-    socket.send_to(data, src).expect("Error sending packet to localhost");
+    return packet;
+    // socket.send_to(data, src).expect("Error sending packet to localhost");
 }

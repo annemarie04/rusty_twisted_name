@@ -102,10 +102,10 @@ impl DNSHeader {
     }
 
     pub fn parse_header(&mut self, parser: &mut PacketParser) {
-        self.id = parser.parse_u16(); // 16 bitsi
+        self.id = parser.parse_u16(); // 16 bits
 
         let flags = parser.parse_u16();
-        let a = (flags >> 8) as u8; // first 8 bitsi
+        let a = (flags >> 8) as u8; // first 8 bits
         let b = (flags & 0xFF) as u8; // last 8 bits
 
         self.recursion_desired = (a & (1 << 0)) > 0; // 1 bit
@@ -172,7 +172,6 @@ impl QueryType {
             QueryType::UNKNOWN(x) => x,
             QueryType::A => 1,
             QueryType::NS => 2,
-            QueryType::CNAME => 3,
             QueryType::CNAME => 5,
             QueryType::MX => 15,
             QueryType::AAAA => 28
@@ -561,5 +560,23 @@ impl DNSPacket {
     // Get the name for an NS record
     pub fn get_unresolved_ns<'a>(&'a self, qname: &'a str) -> Option<&'a str> {
         self.get_ns(qname).map(|(_, host)| host).next()
+    }
+
+    // Print the packet
+    pub fn print_packet(&self) {
+        println!("{:#?}", self.header);
+    
+            for q in &self.questions {
+                println!("{:#?}", q);
+            }
+            for rec in &self.answers {
+                println!("{:#?}", rec);
+            }   
+            for rec in &self.authorities {
+                println!("{:#?}", rec);
+            }
+            for rec in &self.resources {
+                println!("{:#?}", rec);
+            }
     }
 }
