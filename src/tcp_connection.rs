@@ -25,7 +25,7 @@ impl TCPServer {
 impl DNSServer for TCPServer {
     fn run_server(mut self) {
         println!("Running TCP server ...");
-        let socket = TcpListener::bind(("0.0.0.0:2053")).expect("Error binding TCP socket");
+        let socket = TcpListener::bind("0.0.0.0:2053").expect("Error binding TCP socket");
         let mut handlers = Vec::<thread::JoinHandle<()>>::new();
         
         // Spawn threads
@@ -51,20 +51,27 @@ impl DNSServer for TCPServer {
                 
                     // Print packet details 
                     DNSPacket::print_packet(&request);
-                    panic!("Packet received!");
+                    // panic!("Packet received!");
                     // Get the answer for the current request by forwarding
                     let mut response = stub_resolver::handle_query(request);
                     
-                    // Prepare response for sendng
+                    // Prepare response for sending
                     let mut response_writer = PacketWriter::new();
                     response.write_dns_packet(&mut response_writer);
 
-                    let len = response_writer.position();
-                    let data = response_writer.get_range(0, len);
+                    let length = response_writer.position() as u16;
+                    let data = response_writer.get_range(0, length.into());
+                    let mut length_label = [0u8; 2];
+                    PacketWriter::write_label_length(length, &mut length_label);
 
+                    let vec_data = PacketWriter::concatenate_arrays(&length_label, data);
+                    let len = vec_data.len() + 2;
+
+                    let stream_data = PacketWriter::vec_to_array(vec_data).expect("Error converting vector to array.");
                     // Send response
-                    let _ = stream.write(data);
-                    let _ = stream.shutdown(std::net::Shutdown::Both);
+                    let bytes_written = stream.write(&stream_data[0..len as usize]).expect("Error on sending TCP response.");
+                    println!("Written {:?} bytes to stream.", bytes_written);
+                    // stream.shutdown(std::net::Shutdown::Both).expect("Error on shutting down stream.");
                 } // End inner thread loop
             }) {
                     Ok(x) => handlers.push(x),
@@ -72,55 +79,36 @@ impl DNSServer for TCPServer {
                 }; // End of Builder
         } // End of threads loop
 
-        let _ = Builder::new().name("TCPServer-receiving".into()).spawn(move || {
+        let _ = match Builder::new().name("TCPServer-receiving".into()).spawn(move || {
             println!("Launching TCP listening thread...");
             for wrap_stream in socket.incoming() {
+                println!("Received something...");
                 let stream = match wrap_stream {
-                    Ok(stream) => panic!("oops"), 
+                    Ok(stream) => stream, 
                     Err(err) => {
-                        println!("Error on receiving from TCP connection.");
+                        println!("Error on receiving from TCP connection: {:?}.", err);
                         continue;
                     }
                 };
 
                 // Send the TCPStream to a worker to be solved
-                let thread_id = thread_rng().gen::<usize>() % self.thread_count;
-                match self.senders[self.thread_count].send(stream) {
+                let thread_id = thread_rng().gen::<usize>() % (self.thread_count - 1);
+                match self.senders[thread_id].send(stream) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("Error sending TCP request to worker number {:?}", thread_id);
                     }
                 }
             }
-        });
+            })
+            {
+                Ok(x) => x.join().unwrap(),
+                Err(e) => println!("Error on joining threads")
+        }; // End of Builder
+
 
         for handle in handlers {
             handle.join().unwrap();
         }
     }
 }
-
-// pub fn try_tcp() {
-//     let listener = TcpListener::bind("0.0.0.0:53").unwrap();
-
-//     for stream in listener.incoming() {
-//         let stream = stream.unwrap();
-
-//         handle_connection(stream);
-//     }
-// }
-
-// fn handle_connection(mut stream: TcpStream) {
-//     let buf_reader = BufReader::new(&mut stream);
-//     let http_request: Vec<_> = buf_reader
-//         .lines()
-//         .map(|result| result.unwrap())
-//         .take_while(|line| !line.is_empty())
-//         .collect();
-
-//     println!("Request: {:#?}", http_request);
-
-//     let response = "HTTP/1.1 200 OK\r\n\r\n";
-
-//     stream.write_all(response.as_bytes()).unwrap();
-// }

@@ -71,4 +71,36 @@ impl PacketWriter {
         &self.buffer[start..start + len as usize]
     }
 
+    //  Methods for hte TCP Server
+
+    pub fn write_label_length(num: u16, array: &mut [u8]) {
+        // Check if the array has enough space to accommodate the number
+        if array.len() < 2 {
+            panic!("Array is too small to write the number: {:?}", array.len());
+        }
+    
+        // Convert the number to two bytes and store them in the array
+        array[0] = (num >> 8) as u8;  // Most significant byte
+        array[1] = (num & 0xFF) as u8; // Least significant byte
+    }
+
+    pub fn concatenate_arrays<T: Copy>(array1: &[T], array2: &[T]) -> Vec<T> {
+        let mut concatenated_array = Vec::with_capacity(array1.len() + array2.len());
+        concatenated_array.extend_from_slice(array1);
+        concatenated_array.extend_from_slice(array2);
+        concatenated_array
+    }
+
+    pub fn vec_to_array(mut vec: Vec<u8>)-> Result<[u8; 63000], Vec<u8>> {
+        let len = vec.len();
+        let mut array = [0u8; 63000];
+        let mut pos = 0;
+        for elem in vec {
+            array[pos] = elem;
+            pos = pos + 1; // Fill the array with elements from the vector
+        }
+        
+        Ok(array)
+    }
+
 }

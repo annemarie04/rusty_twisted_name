@@ -31,7 +31,7 @@ impl PacketParser {
         let bytes_read = stream.read(&mut self.buffer).expect("Error reading data from TCP Stream.");
 
         // Return an error if the bytes read are less than the array size
-        if bytes_read < self.buffer.len() {
+        if bytes_read > self.buffer.len() {
             panic!("Buffer size exceeded!");    
         }
 
