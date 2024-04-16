@@ -1,5 +1,5 @@
 pub struct PacketWriter {
-    pub buffer: [u8; 4096],
+    pub buffer: [u8; 63000],
     pub position: usize,
 }
 
@@ -7,7 +7,7 @@ impl PacketWriter {
     
     pub fn new() -> PacketWriter {
         PacketWriter {
-            buffer: [0; 4096],
+            buffer: [0; 63000],
             position: 0,
         }
     }

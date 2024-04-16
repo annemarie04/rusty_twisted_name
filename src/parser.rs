@@ -1,10 +1,10 @@
 // use std::error::Error;
 
-use std::{fmt::Error, thread::current};
+use std::{fmt::Error, io::{self, Read}, net::TcpStream, thread::current};
 
 // This is a Packet Parser for UDP Packets of 512bytes 
 pub struct PacketParser {
-    pub buffer: [u8; 4096],
+    pub buffer: [u8; 63000], // 63000 for TCP // 4096 for UDP
     pub position: usize,
 }
 
@@ -15,11 +15,27 @@ impl PacketParser {
     // -> sets parsing position to 0
     pub fn new() -> PacketParser {
         PacketParser {
-            buffer: [0; 4096],
+            buffer: [0; 63000], // 63000 for TCP // 4096 for UDP
             position: 0,
         }
     }
+    
+    pub fn tcp_stream_to_bytes(&mut self, stream: &mut TcpStream) {
+        // Skip the first two bytes 
+        // TCP packets have the length of the packet
+        // written in the first 2 bytes
+        let mut skip_buffer = [0; 2];
+        stream.read_exact(&mut skip_buffer);
+    
+        // Read the remaining bytes into the buffer
+        let bytes_read = stream.read(&mut self.buffer).expect("Error reading data from TCP Stream.");
 
+        // Return an error if the bytes read are less than the array size
+        if bytes_read < self.buffer.len() {
+            panic!("Buffer size exceeded!");    
+        }
+
+    }
     // Get current parsing position
     // fn position(&self) -> usize {
     //     self.position

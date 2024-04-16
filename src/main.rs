@@ -9,29 +9,21 @@ pub mod udp_connection;
 use std::thread;
 
 use server::DNSServer;
+use tcp_connection::TCPServer;
 use udp_connection::UDPServer;
 
 fn main() {
-//    tcp_connection::try_tcp();
-    dns_over_udp();
+    launch_tcp_server();  
 } 
-
-fn dns_over_udp() {
-    // let socket = UdpSocket::bind("0.0.0.0:2053").expect("Error binding to localhost");
-
-        // Need to use a try here
-        // stub_resolver::handle_query(&socket);
-        let dns_server = UDPServer::new(5);
-
-        // let handle = thread::spawn(|| {
-
-            UDPServer::run_server(dns_server);
-        // });
-
-        // handle.join().unwrap();
-        
-    
+fn launch_tcp_server() {
+    let dns_server = TCPServer::new(5);
+    TCPServer::run_server(dns_server);
 }
+
+// fn launch_udp_server() {
+//     let dns_server = UDPServer::new(5);
+//     UDPServer::run_server(dns_server);
+// }
 // fn test_query() {
 //     let qname = "yahoo.com";
 //     let qtype = QueryType::MX;
