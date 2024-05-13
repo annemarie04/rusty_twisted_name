@@ -2,22 +2,22 @@ use std::{collections::VecDeque, net::{SocketAddr, UdpSocket}, sync::{Arc, Condv
 
 use crate::{packet::DNSPacket, parser::PacketParser, server::DNSServer, stub_resolver::{self}};
 use crate::writer::PacketWriter;
+use crate::server_config::ServerContext;
 pub struct UDPServer {
     // Using Arc to share ownership between multiple threads
-    // context: Arc<ServerContext>,
+    context: Arc<ServerContext>,
     request_queue: Arc<Mutex<VecDeque<(SocketAddr, DNSPacket)>>>,
     request_cond: Arc<Condvar>,
-    thread_count: usize,
 }
 
 impl UDPServer {
     // pub fn new(context: Arc<ServerContext>, thread_count: usize) -> UDPServer {
-    pub fn new(thread_count: usize) -> UDPServer {
+    pub fn new(server_context: ServerContext) -> UDPServer {
         UDPServer {
             // context: context,
             request_queue: Arc::new(Mutex::new(VecDeque::new())),
             request_cond: Arc::new(Condvar::new()),
-            thread_count: thread_count,
+            context: Arc::new(server_context),
         }
     }
 }
@@ -27,11 +27,12 @@ impl DNSServer for UDPServer {
     fn run_server(self) {
         println!("Running UDP server ...");
         // Bind the UDP socket 
-        let socket = UdpSocket::bind(("0.0.0.0:2053")).expect("Error binding UDP socket");
+        let address = format!("{}:{}", self.context.dns_host, self.context.dns_port);
+        let socket = UdpSocket::bind(address).expect("Error binding UDP socket");
         let mut handlers = Vec::<thread::JoinHandle<()>>::new();
 
         // Spawn threads for solving queries
-        for thread_id in 0..self.thread_count {
+        for thread_id in 0..self.context.thread_count {
             let socket_clone = match socket.try_clone() {
                 Ok(x) => x,
                 Err(e) => {
@@ -41,7 +42,7 @@ impl DNSServer for UDPServer {
             };
 
             // let context = self.context.clone(); // Config Data
-            let request_cond = self.request_cond.clone(); // Condition for blockng threads
+            let request_cond = self.request_cond.clone(); // Condition for blocking threads
             let request_queue = self.request_queue.clone(); // queue with requests
 
             let name = "DNSServer-solving-".to_string() + &thread_id.to_string();

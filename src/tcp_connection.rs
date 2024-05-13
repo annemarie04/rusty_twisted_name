@@ -4,20 +4,18 @@ use std::{
 };
 use rand::{Rng, thread_rng};
 
-use crate::{packet::DNSPacket, parser::PacketParser, server::{DNSServer, ServerContext}, stub_resolver, writer::PacketWriter};
+use crate::{packet::DNSPacket, parser::PacketParser, server::DNSServer, stub_resolver, writer::PacketWriter, server_config::ServerContext};
 
 pub struct TCPServer {
-    // context: Arc<ServerContext>,
+    context: Arc<ServerContext>,
     senders: Vec<Sender<TcpStream>>,
-    thread_count: usize,
 }
 
 impl TCPServer {
-    pub fn new(thread_count: usize) -> TCPServer {
+    pub fn new(server_context: ServerContext) -> TCPServer {
         TCPServer {
-            // context: context,
+            context: Arc::new(server_context),
             senders: Vec::new(),
-            thread_count: thread_count,
         }
     }
 }
@@ -25,11 +23,12 @@ impl TCPServer {
 impl DNSServer for TCPServer {
     fn run_server(mut self) {
         println!("Running TCP server ...");
-        let socket = TcpListener::bind("0.0.0.0:2053").expect("Error binding TCP socket");
+        let address  = format!("{}:{}", self.context.dns_host, self.context.dns_port);
+        let socket = TcpListener::bind(address).expect("Error binding TCP socket");
         let mut handlers = Vec::<thread::JoinHandle<()>>::new();
         
         // Spawn threads
-        for thread_id in 0..self.thread_count {
+        for thread_id in 0..self.context.thread_count {
             let (tx, rx) = channel();
             self.senders.push(tx);
 
@@ -92,7 +91,7 @@ impl DNSServer for TCPServer {
                 };
 
                 // Send the TCPStream to a worker to be solved
-                let thread_id = thread_rng().gen::<usize>() % (self.thread_count - 1);
+                let thread_id = thread_rng().gen::<usize>() % (self.context.thread_count - 1);
                 match self.senders[thread_id].send(stream) {
                     Ok(_) => {}
                     Err(e) => {
