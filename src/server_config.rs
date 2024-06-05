@@ -10,6 +10,7 @@ pub enum ResolveType {
         port: u16,
     },
 }
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServerContext {
     // pub authority,
@@ -39,9 +40,9 @@ impl ServerContext {
             dns_host: "0.0.0.0".to_string(),
             // api_port: 5380,
             resolve_strategy: ResolveType::Recursive,
-            allow_recursive: true,
-            enable_udp: true,
-            enable_tcp: true,
+            allow_recursive: false,
+            enable_udp: false,
+            enable_tcp: false,
             thread_count: 1,
             // enable_api: true,
             // statistics: ServerStatistics {
@@ -51,3 +52,13 @@ impl ServerContext {
         }
     }
 }
+
+impl PartialEq for ServerContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.dns_host == other.dns_host && self.dns_port == other.dns_port 
+        && self.allow_recursive == other.allow_recursive && self.enable_tcp == other.enable_tcp 
+        && self.enable_udp == other.enable_udp && self.thread_count == other.thread_count
+    }
+}
+
+impl Eq for ServerContext {}

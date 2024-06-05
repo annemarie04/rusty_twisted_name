@@ -12,9 +12,9 @@ pub struct TCPServer {
 }
 
 impl TCPServer {
-    pub fn new(server_context: ServerContext) -> TCPServer {
+    pub fn new(server_context: Arc<ServerContext>) -> TCPServer {
         TCPServer {
-            context: Arc::new(server_context),
+            context: server_context,
             senders: Vec::new(),
         }
     }
@@ -109,5 +109,9 @@ impl DNSServer for TCPServer {
         for handle in handlers {
             handle.join().unwrap();
         }
+    }
+
+    fn shutdown(&self) {
+        println!("TCP shutdown");
     }
 }

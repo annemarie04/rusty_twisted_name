@@ -7,23 +7,33 @@ pub mod server;
 pub mod tcp_connection;
 pub mod udp_connection;
 pub mod server_config;
-use std::path::PathBuf;
-use std::{error::Error, path::Path, thread};
+use std::net::Shutdown;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::sleep;
+
 
 use server::DNSServer;
-use tcp_connection::TCPServer;
 use udp_connection::UDPServer;
 use server_config::ServerContext;
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
-use std::fs;
-use notify::{recommended_watcher, RecursiveMode, Watcher, Config, Event, EventKind};
+use std::{clone, fs, thread};
+use notify::{ RecursiveMode, Watcher, Event};
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
-    let context = import_config().unwrap();
-    println!("{:?}",context);
+    let udp_server_state: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let tcp_server_state: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    
+    let old_context: Arc<ServerContext> = Arc::new(ServerContext::new());
+    println!("INITIAL CONFIG: {:?}",old_context);
+    let (udp_sender, udp_receiver) = mpsc::channel();
+    let udp_receiver = Arc::new(Mutex::new(udp_receiver));
+
+
     let (tx, rx) = channel();
     let config_path = "../config/server_config.json";
     // Add a path to be watched. All files and directories at that path and
@@ -44,8 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
                 watcher.watch(Path::new(config_path), RecursiveMode::Recursive).expect("Error on watch");
 
         
-        // Print a message to indicate that watching has started
-        debounce_events(rx, Duration::from_secs(1)); // Set your debounce threshold here
+        // Set your debounce threshold here
+        debounce_events(rx, Duration::from_secs(1), old_context, udp_sender, udp_receiver); 
 
 
         // Use a simple loop to keep the application alive as it waits for file events.
@@ -55,9 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         Ok(())
 }
 
-fn debounce_events(rx: Receiver<Event>, debounce_duration: Duration) {
+fn debounce_events(rx: Receiver<Event>, debounce_duration: Duration,mut old_context: Arc<ServerContext>, udp_sender: Sender<()>, udp_receiver: Arc<Mutex<Receiver<()>>>)  {
     let mut last_seen: HashMap<PathBuf, Instant> = HashMap::new();
-
     while let Ok(event) = rx.recv() {
         // println!("Event found! {:?}", event);
         if let Some(path) = event.paths.first() {
@@ -68,11 +77,11 @@ fn debounce_events(rx: Receiver<Event>, debounce_duration: Duration) {
                     continue; // Skip this event, as it's within the debounce threshold
                 }
             }
-
             // Handle the event, as it's either the first or sufficiently spaced from the last
             if event.kind.is_modify() {
                 println!("Config file modified: {:?}", path);
-                start_server();
+                    let mut new_old_context = start_server(old_context.clone(), udp_sender.clone(), udp_receiver.clone()).unwrap();
+                    old_context = new_old_context;
             }
 
             // Update the last seen time
@@ -91,38 +100,79 @@ fn import_config() -> Result<ServerContext, notify::Error> {
     server_context
 }
 
-fn start_server() {
-    let mut udp_server_state = false;
-    let mut tcp_server_state = false;
+fn start_server(old_context: Arc<ServerContext>,udp_sender: Sender<()>, udp_receiver: Arc<Mutex<Receiver<()>>>) -> Result<Arc<ServerContext>,notify::Error> {
+    println!("Old Context: {:?}", old_context);
+    let mut tcp_server_state = old_context.enable_tcp;
+    let mut udp_server_state = old_context.enable_udp;
+
+
     if let Err(e) = import_config() {
-                        // Wrong config; Keep the current config running
-                        println!("Failed to import server configuration: {}", e);
-                    } else {
-                        // New config; Make the changes
-                        let server_context = import_config().unwrap();
-                        let tcp_server = TCPServer::new(server_context.clone());
+        // Wrong config; Keep the current config running
+        println!("Failed to import server configuration: {}", e);
+        Err(e)
+    } else {
+        // New config; Make the changes
+        let server_context = Arc::new(import_config().unwrap());
+        let context_copy = server_context.clone();
+        println!("Successfully imported server configuration: {:?}", server_context);
 
-                        println!("Successfully imported server configuration: {:?}", server_context);
-                        let udp_server = UDPServer::new(server_context.clone());
+        
 
+        // let tcp_server = TCPServer::new(Arc::clone(&server_context));
+        if old_context != server_context {
+            println!("Applying changes... {:?}", udp_server_state);  
+            start_udp_server(old_context, server_context, udp_server_state, udp_receiver.clone(), udp_sender);    
+        }
+        
 
-                        if server_context.enable_udp && udp_server_state == false{
-                            let udp_server_handle = thread::spawn(move || {
-                                udp_server.run_server();
-                                udp_server_state = true;
-                            });
-                        }
-                        if server_context.enable_udp == false && udp_server_state{
-                            // drop(udp_server);
-                        }
-                        if server_context.enable_tcp && tcp_server_state == false{
-                            let tcp_server_handle = thread::spawn(move || {
-                                tcp_server.run_server();
-                                tcp_server_state = true;
-                            });
-                        }
-                }   
+        Ok(context_copy)
+    }   
 } 
+
+
+
+fn start_udp_server(old_context: Arc<ServerContext>, server_context: Arc<ServerContext>, udp_server_state: bool, receiver: Arc<Mutex<Receiver<()>>>, sender: Sender<()>) {
+    
+
+    if server_context.enable_udp && udp_server_state == false{
+        // If UDP server was down and start is required
+        println!("Starting UDP Server..."); 
+        let udp_server = UDPServer::new(Arc::clone(&server_context), receiver);
+        thread::spawn(move || {
+            udp_server.run_server();
+        });
+        // sleep(std::time::Duration::from_secs(20));
+        // stop_server(server_context, sender)
+
+        
+    } else if server_context.enable_udp && udp_server_state {
+        // IF UDP server is up and restart is required to apply changes
+        println!("UDP Server gracefully shutting down...");
+        stop_server(old_context, sender);
+
+        println!("Starting UDP Server...");
+        let udp_server = UDPServer::new(Arc::clone(&server_context), receiver);
+        thread::spawn(move || {
+            udp_server.run_server();
+        });
+
+    } else if !server_context.enable_udp && udp_server_state{
+        println!("UDP Server gracefully shutting down...");
+        let result = sender.send(());
+        println!("Sending.. {:?}", result);
+        stop_server(old_context, sender);
+    }
+}
+
+
+fn stop_server(server_context: Arc<ServerContext>, sender: Sender<()>) {
+    for thread in 0..server_context.thread_count {
+        let _ = sender.send(()); // Sending signal via channel as well
+    }
+    let _ = sender.send(()); // Sending signal via channel as well
+    sleep(std::time::Duration::from_secs(2));
+    // let _ = sender.send(()); // Sending signal via channel as well
+}
 
 // fn launch_tcp_server() {
 //     let dns_server = TCPServer::new(5);

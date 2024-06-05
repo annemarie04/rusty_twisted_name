@@ -268,7 +268,7 @@ impl DNSRecord {
         let qtype_num = parser.parse_u16();
         // print!("Qtype: {qtype_num}");
         let qtype = QueryType::get_query_type(qtype_num);
-        let class = parser.parse_u16();
+        let _class = parser.parse_u16();
         let ttl = parser.parse_u32();
         // print!("Ttl: {ttl}");
         let data_length = parser.parse_u16();
@@ -312,7 +312,7 @@ impl DNSRecord {
                 }
             }
             QueryType::NS => {
-                let mut ns = parser.parse_qname();
+                let ns = parser.parse_qname();
 
                 DNSRecord::NS {
                     domain: domain,
@@ -322,7 +322,7 @@ impl DNSRecord {
 
             }
             QueryType::CNAME => {
-                let mut cname = parser.parse_qname();
+                let cname = parser.parse_qname();
 
                 DNSRecord::CNAME {
                     domain: domain, 
@@ -332,7 +332,7 @@ impl DNSRecord {
             }
             QueryType::MX => {
                 let priority = parser.parse_u16();
-                let mut mx = parser.parse_qname();
+                let mx = parser.parse_qname();
 
                 DNSRecord::MX {
                     domain: domain, 

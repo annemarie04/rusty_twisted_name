@@ -1,6 +1,6 @@
 // use std::error::Error;
 
-use std::{fmt::Error, io::{self, Read}, net::TcpStream, thread::current};
+use std::{fmt::Error, io::Read, net::TcpStream,};
 
 // This is a Packet Parser for UDP Packets of 512bytes 
 pub struct PacketParser {
