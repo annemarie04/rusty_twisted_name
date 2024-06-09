@@ -9,7 +9,6 @@ pub struct UDPServer {
     request_queue: Arc<Mutex<VecDeque<(SocketAddr, DNSPacket)>>>,
     request_cond: Arc<Condvar>,
     workers: Vec<JoinHandle<()>>,
-    is_running: Arc<AtomicBool>,
     receiver: Arc<Mutex<mpsc::Receiver<()>>>,
 }
 
@@ -23,7 +22,6 @@ impl UDPServer {
             request_cond: Arc::new(Condvar::new()),
             context: server_context,
             workers: Vec::new(),
-            is_running: Arc::new(AtomicBool::new(true)),
             receiver: receiver,
         }
     }
@@ -63,24 +61,25 @@ impl DNSServer for UDPServer {
 
                 loop {
                     if let Ok(_) = receiver.lock().unwrap().try_recv() {
-                        println!("Shutdown signal received.");
+                        // println!("Shutdown signal received.");
                         println!("Breaking Thread {:?}", thread_id);
                         break;
                     }
-                    println!("Working...thread = {:?}", thread_id);
+                    // println!("Working...thread = {:?}", thread_id);
                     // Take request from queue only if lock is aquired
                     let (src, request) = match request_queue.lock().ok()
                                         .and_then(|mut x| x.pop_front()) {
                                             Some(x) => x,
                                             None => {
-                                                println!("Oops...No requests");
+                                                // println!("Oops...No requests");
                                                 continue;
                                             }
                                         };
                     
                     
                     // Print the current request
-                    DNSPacket::print_packet(&request);
+                    // DNSPacket::print_packet(&request);
+
 
                     // Get the answer for the current request by forwarding
                     let mut response = stub_resolver::handle_query(request);
@@ -109,11 +108,11 @@ impl DNSServer for UDPServer {
             move || {
                 loop {
                     if let Ok(_) = receiver.lock().unwrap().try_recv() {
-                        println!("Shutdown signal received.");
+                        // println!("Shutdown signal received.");
                         println!("Breaking Listener Thread.");
                         break;
                     }
-                    println!("Looping on receiving...");
+                    // println!("Looping on receiving...");
                     // Get packets from UDP socket
                     let mut packet_parser = PacketParser::new();
                     let socket_copy = socket.try_clone().expect("Socket cloning error");
@@ -121,13 +120,14 @@ impl DNSServer for UDPServer {
                         Ok(x) => x,
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
                             // Timeout occurred or no data available yet, continue to the next iteration of the loop
-                            println!("No data received for 20 seconds, continuing...");
+                            // println!("No data received for 20 seconds, continuing...");
                             continue;
                         },
                         Err(e) => {
                             continue;
                         }
                     };
+                    // println!("Query: {:?}", packet_parser.buffer);
 
                     // Parse the received request
                     let request = DNSPacket::get_dns_packet(&mut packet_parser);

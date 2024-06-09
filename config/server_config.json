@@ -1,0 +1,9 @@
+{
+    "dns_port": 2053,
+    "dns_host": "0.0.0.0",
+    "resolve_strategy": "Recursive",
+    "allow_recursive": false,
+    "enable_udp":true,
+    "enable_tcp": false,
+    "thread_count": 100
+  }
