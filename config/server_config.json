@@ -1,9 +1,14 @@
 {
     "dns_port": 2053,
     "dns_host": "0.0.0.0",
-    "resolve_strategy": "Recursive",
+    "resolve_strategy": {
+      "Forward": {
+        "host": "8.8.8.8",
+        "port": 53
+      }
+    },
     "allow_recursive": false,
     "enable_udp":true,
     "enable_tcp": false,
-    "thread_count": 100
+    "thread_count": 19
   }

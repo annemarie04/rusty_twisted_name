@@ -2,6 +2,8 @@ use std::net::Ipv4Addr;
 use crate::packet::{DNSPacket, QueryType, RCode};
 use crate::stub_resolver::lookup;
 
+
+
 pub fn recursive_lookup(qname: &str, qtype: QueryType) -> DNSPacket {
     // Set starting root server
     let mut ns = "198.41.0.4".parse::<Ipv4Addr>().unwrap();

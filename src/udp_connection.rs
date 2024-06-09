@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, io, net::{SocketAddr, UdpSocket}, sync::{atomic::{AtomicBool, Ordering}, mpsc, Arc, Condvar, Mutex}, thread::{self, JoinHandle}, time::Duration};
 
-use crate::{packet::DNSPacket, parser::PacketParser, server::DNSServer, stub_resolver::{self}};
+use crate::{packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config, stub_resolver};
 use crate::writer::PacketWriter;
 use crate::server_config::ServerContext;
 pub struct UDPServer {
@@ -51,7 +51,7 @@ impl DNSServer for UDPServer {
                 }
             };
 
-            // let context = self.context.clone(); // Config Data
+            let context = self.context.clone(); // Config Data
             // let request_cond = self.request_cond.clone(); // Condition for blocking threads
             let request_queue = self.request_queue.clone(); // queue with requests
 
@@ -82,7 +82,7 @@ impl DNSServer for UDPServer {
 
 
                     // Get the answer for the current request by forwarding
-                    let mut response = stub_resolver::handle_query(request);
+                    let mut response = resolve_strategy::handle_query(request, context.clone());
                     
                     // Prepare response for sendng
                     let mut response_writer = PacketWriter::new();
@@ -102,6 +102,7 @@ impl DNSServer for UDPServer {
         } // End of threads for
 
         // Single thread for receiving
+        let context = self.context.clone(); // Config Data
         let builder = thread::Builder::new();
         let receiver = Arc::clone(&self.receiver);
         let _receiving_worker = builder.name("UDPServer-receiving".into()).spawn(
@@ -115,7 +116,7 @@ impl DNSServer for UDPServer {
                     // println!("Looping on receiving...");
                     // Get packets from UDP socket
                     let mut packet_parser = PacketParser::new();
-                    let socket_copy = socket.try_clone().expect("Socket cloning error");
+                    let _socket_copy = socket.try_clone().expect("Socket cloning error");
                     let (_, src) = match socket.recv_from(&mut packet_parser.buffer) {
                         Ok(x) => x,
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
@@ -127,13 +128,12 @@ impl DNSServer for UDPServer {
                             continue;
                         }
                     };
-                    // println!("Query: {:?}", packet_parser.buffer);
 
                     // Parse the received request
                     let request = DNSPacket::get_dns_packet(&mut packet_parser);
                     
                     // Print received packet
-                    DNSPacket::print_packet(&request);
+                    // DNSPacket::print_packet(&request);
                     // Acquire lock and add request to queue
                     // Workers should be notified using the Condvar
                     match self.request_queue.lock() {
@@ -152,17 +152,5 @@ impl DNSServer for UDPServer {
             worker.join().unwrap();
         }
         print!("UDP Server is down.");
-    }
-
-    fn shutdown(&self) {
-        println!("Sending shutdown signal...");
-        // self.is_running.store(false, Ordering::SeqCst); // Using atomic flag to signal shutdown
-        
-
-        // for worker in self.workers {
-        //     if let Err(e) = &worker.join() {
-        //         eprintln!("Failed to join worker thread: {:?}", e);
-        //     }
-        // }
     }
 }

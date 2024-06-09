@@ -1,10 +1,10 @@
 use std::{
-    io::{prelude::*, BufReader},
+    io::prelude::*,
     net::{TcpListener, TcpStream}, sync::{mpsc::{self, channel, Sender}, Arc, Mutex}, thread::{self, Builder},
 };
 use rand::{Rng, thread_rng};
 
-use crate::{packet::DNSPacket, parser::PacketParser, server::DNSServer, stub_resolver, writer::PacketWriter, server_config::ServerContext};
+use crate::{packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config::ServerContext, stub_resolver, writer::PacketWriter};
 
 pub struct TCPServer {
     context: Arc<ServerContext>,
@@ -28,7 +28,7 @@ impl DNSServer for TCPServer {
         let address  = format!("{}:{}", self.context.dns_host, self.context.dns_port);
         let socket = TcpListener::bind(address).expect("Error binding TCP socket");
         let mut handlers = Vec::<thread::JoinHandle<()>>::new();
-        let mut is_running = Arc::new(false);
+        let is_running = Arc::new(false);
         
         // Spawn threads
         for thread_id in 0..self.context.thread_count {
@@ -37,7 +37,7 @@ impl DNSServer for TCPServer {
             let mut is_running = is_running.clone();
             self.senders.push(tx);
 
-            // let context = self.context.clone();
+            let context = self.context.clone();
 
             let name = "TCPServer-request-".to_string() + &thread_id.to_string();
             let _worker = match Builder::new().name(name).spawn(move || {
@@ -63,7 +63,8 @@ impl DNSServer for TCPServer {
                     DNSPacket::print_packet(&request);
                     // panic!("Packet received!");
                     // Get the answer for the current request by forwarding
-                    let mut response = stub_resolver::handle_query(request);
+                    let mut response = resolve_strategy::handle_query(request, context.clone());
+
                     
                     // Prepare response for sending
                     let mut response_writer = PacketWriter::new();
@@ -80,8 +81,7 @@ impl DNSServer for TCPServer {
                     let stream_data = PacketWriter::vec_to_array(vec_data).expect("Error converting vector to array.");
                     // Send response
                     let bytes_written = stream.write(&stream_data[0..len as usize]).expect("Error on sending TCP response.");
-                    println!("Written {:?} bytes to stream.", bytes_written);
-                    // stream.shutdown(std::net::Shutdown::Both).expect("Error on shutting down stream.");
+                    // println!("Written {:?} bytes to stream.", bytes_written);
                 } // End inner thread loop
             }) {
                     Ok(x) => handlers.push(x),
@@ -89,7 +89,7 @@ impl DNSServer for TCPServer {
                 }; // End of Builder
         } // End of threads loop
         let receiver = Arc::clone(&self.receiver);
-
+        let context = self.context.clone();
         let is_running = is_running.clone();
         let _ = match Builder::new().name("TCPServer-receiving".into()).spawn(move || {
             println!("Launching TCP listening thread...");
@@ -107,22 +107,6 @@ impl DNSServer for TCPServer {
                     }
                 };
 
-                // let bytes_read = stream.read(&mut buffer)?;
-
-                // // Convert the buffer to a UTF-8 string slice
-                // if bytes_read > 0 {
-                //     let received_data = str::from_utf8(&buffer[..bytes_read])
-                //         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            
-                //     // Check if the received data is "Stop"
-                //     if received_data.trim() == "Stop" {
-                //         println!("Received 'Stop' command.");
-                //         break;
-                //     } else {
-                //         println!("Received data: {}", received_data);
-                //     }
-
-                // }
                 // Send the TCPStream to a worker to be solved
                 let thread_id = thread_rng().gen::<usize>() % (self.context.thread_count - 1);
                 match self.senders[thread_id].send(stream) {
@@ -137,7 +121,7 @@ impl DNSServer for TCPServer {
             })
             {
                 Ok(x) => x.join().unwrap(),
-                Err(e) => println!("Error on joining threads")
+                Err(e) => println!("Error on joining threads: {:?}", e)
         }; // End of Builder
 
 
@@ -145,9 +129,5 @@ impl DNSServer for TCPServer {
             handle.join().unwrap();
         }
         println!("TCP Server is Down.")
-    }
-
-    fn shutdown(&self) {
-        println!("TCP shutdown");
     }
 }

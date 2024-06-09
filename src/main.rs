@@ -7,10 +7,10 @@ pub mod server;
 pub mod tcp_connection;
 pub mod udp_connection;
 pub mod server_config;
+pub mod resolve_strategy;
 use std::io::{self, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::sleep;
 
@@ -22,7 +22,7 @@ use server_config::ServerContext;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
-use std::{clone, fs, thread};
+use std::{fs, thread};
 use notify::{ RecursiveMode, Watcher, Event};
 
 use crate::tcp_connection::TCPServer;
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             match res {
                 Ok(event) => {
                     // println!("Event found! {:?}", event);
-                    tx.send(event);
+                    let _ = tx.send(event);
                     }
                 Err(e) => println!("Error on watcher: {:?}", e),
             }
@@ -82,7 +82,7 @@ fn debounce_events(rx: Receiver<Event>, debounce_duration: Duration,mut old_cont
             // Handle the event, as it's either the first or sufficiently spaced from the last
             if event.kind.is_modify() {
                 println!("Config file modified: {:?}", path);
-                    let mut new_old_context = start_server(old_context.clone(), udp_sender.clone(), udp_receiver.clone(), tcp_sender.clone(), tcp_receiver.clone()).unwrap();
+                    let new_old_context = start_server(old_context.clone(), udp_sender.clone(), udp_receiver.clone(), tcp_sender.clone(), tcp_receiver.clone()).unwrap();
                     old_context = new_old_context;
             }
 
@@ -104,8 +104,8 @@ fn import_config() -> Result<ServerContext, notify::Error> {
 
 fn start_server(old_context: Arc<ServerContext>,udp_sender: Sender<()>, udp_receiver: Arc<Mutex<Receiver<()>>>, tcp_sender: Sender<()>, tcp_receiver: Arc<Mutex<Receiver<()>>>) -> Result<Arc<ServerContext>,notify::Error> {
     println!("Old Context: {:?}", old_context);
-    let mut tcp_server_state = old_context.enable_tcp;
-    let mut udp_server_state = old_context.enable_udp;
+    let tcp_server_state = old_context.enable_tcp;
+    let udp_server_state = old_context.enable_udp;
 
 
     if let Err(e) = import_config() {
@@ -146,7 +146,7 @@ fn start_tcp_server(old_context: Arc<ServerContext>, server_context: Arc<ServerC
     } else if server_context.enable_tcp && tcp_server_state {
         // IF TCP server is up and restart is required to apply changes
         println!("TCP Server gracefully shutting down...");
-        stop_server(old_context, sender);
+        stop_udp_server(old_context, sender);
 
         println!("Starting TCP Server...");
         let tcp_server = TCPServer::new(Arc::clone(&server_context), receiver);
@@ -175,7 +175,7 @@ fn start_udp_server(old_context: Arc<ServerContext>, server_context: Arc<ServerC
     } else if server_context.enable_udp && udp_server_state {
         // IF UDP server is up and restart is required to apply changes
         println!("UDP Server gracefully shutting down...");
-        stop_server(old_context, sender);
+        stop_udp_server(old_context, sender);
 
         println!("Starting UDP Server...");
         let udp_server = UDPServer::new(Arc::clone(&server_context), receiver);
@@ -185,7 +185,7 @@ fn start_udp_server(old_context: Arc<ServerContext>, server_context: Arc<ServerC
 
     } else if !server_context.enable_udp && udp_server_state{
         println!("UDP Server gracefully shutting down...");
-        stop_server(old_context, sender);
+        stop_udp_server(old_context, sender);
     }
 }
 
@@ -204,8 +204,8 @@ fn send_tcp_stream(server_context: Arc<ServerContext>) -> io::Result<()> {
 
     Ok(())
 }
-fn stop_server(server_context: Arc<ServerContext>, sender: Sender<()>) {
-    for thread in 0..server_context.thread_count {
+fn stop_udp_server(server_context: Arc<ServerContext>, sender: Sender<()>) {
+    for _thread in 0..server_context.thread_count {
         let _ = sender.send(()); // Sending signal via channel as well
     }
     let _ = sender.send(()); // Sending signal via channel as well
@@ -214,7 +214,7 @@ fn stop_server(server_context: Arc<ServerContext>, sender: Sender<()>) {
 }
 
 fn stop_tcp_server(server_context: Arc<ServerContext>, sender: Sender<()>) {
-    for thread in 0..server_context.thread_count {
+    for _thread in 0..server_context.thread_count {
         let _ = sender.send(()); // Sending signal via channel as well
     }
     sleep(std::time::Duration::from_secs(2));

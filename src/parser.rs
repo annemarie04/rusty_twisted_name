@@ -25,7 +25,7 @@ impl PacketParser {
         // TCP packets have the length of the packet
         // written in the first 2 bytes
         let mut skip_buffer = [0; 2];
-        stream.read_exact(&mut skip_buffer);
+        let _ = stream.read_exact(&mut skip_buffer);
     
         // Read the remaining bytes into the buffer
         let bytes_read = stream.read(&mut self.buffer).expect("Error reading data from TCP Stream.");
