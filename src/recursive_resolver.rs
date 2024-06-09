@@ -4,7 +4,7 @@ use crate::stub_resolver::lookup;
 
 
 
-pub fn recursive_lookup(qname: &str, qtype: QueryType) -> DNSPacket {
+pub fn recursive_lookup(qname: &str, qtype: QueryType, rd_flag: bool) -> DNSPacket {
     // Set starting root server
     let mut ns = "198.41.0.4".parse::<Ipv4Addr>().unwrap();
 
@@ -15,7 +15,7 @@ pub fn recursive_lookup(qname: &str, qtype: QueryType) -> DNSPacket {
         // Launch query
         let ns_copy = ns;
         let server = (ns_copy, 53);
-        let response = lookup(qname, qtype, server);
+        let response = lookup(qname, qtype, server, rd_flag);
 
 
 
@@ -43,7 +43,7 @@ pub fn recursive_lookup(qname: &str, qtype: QueryType) -> DNSPacket {
         };
 
         // Start another recursion
-        let recursive_response = recursive_lookup(&new_ns_name, QueryType::A);
+        let recursive_response = recursive_lookup(&new_ns_name, QueryType::A, rd_flag);
 
         // Pick another IP and continue looping
         if let Some(new_ns) = recursive_response.get_random_record() {

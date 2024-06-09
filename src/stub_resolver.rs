@@ -3,13 +3,13 @@ use crate::recursive_resolver::recursive_lookup;
 use crate::{packet::{DNSPacket, DNSQuestion, QueryType, RCode}, parser::PacketParser, writer::PacketWriter};
  
 static id: u16 = 6666;
-pub fn lookup(qname: &str, qtype: QueryType, server:(Ipv4Addr, u16)) -> DNSPacket{
+pub fn lookup(qname: &str, qtype: QueryType, server:(Ipv4Addr, u16), rd_flag:bool) -> DNSPacket{
 
     // Set up socket connection to server
     let socket = UdpSocket::bind(("0.0.0.0", 43210)).expect("Couldn't connect to server");
 
     // Build DNS Query Packet
-    let query = build_query(qname, qtype);
+    let query = build_query(qname, qtype, rd_flag);
 
     // Send the packet
     socket.send_to(&query.buffer[0..query.position], server).expect("Error on sending packet");
@@ -22,14 +22,14 @@ pub fn lookup(qname: &str, qtype: QueryType, server:(Ipv4Addr, u16)) -> DNSPacke
     let packet = DNSPacket::get_dns_packet(&mut response_parser);
     packet
 }
-pub fn build_query(qname: &str, qtype: QueryType) -> PacketWriter {
+pub fn build_query(qname: &str, qtype: QueryType, rd_flag: bool) -> PacketWriter {
         // Init new DNS Packet
         let mut query_packet = DNSPacket::new();
 
         // Set the Header
         query_packet.header.id = id;
         query_packet.header.qd_count = 1;
-        query_packet.header.recursion_desired = true;
+        query_packet.header.recursion_desired = rd_flag;
         
         // Set the question
         let mut question = DNSQuestion::new();

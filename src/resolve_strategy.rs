@@ -43,15 +43,16 @@ pub fn handle_query(mut request: DNSPacket, server_context: Arc<ServerContext>) 
 
 pub fn resolve(qname: &str, qtype: QueryType, server_context: Arc<ServerContext>) -> DNSPacket{
     let resolver = server_context.resolve_strategy.clone();
+    let rd_flag = server_context.allow_recursive;
     match resolver {
         ResolveType::Recursive => {
-            recursive_lookup(qname, qtype)
+            recursive_lookup(qname, qtype, rd_flag)
         },
         ResolveType::Forward { host, port } => {
             println!("Forwarding to {:?}", host);
             let host = host.parse::<Ipv4Addr>().unwrap();
             let server = (host, port);
-            lookup(qname, qtype, server)
+            lookup(qname, qtype, server, rd_flag)
         }
     }
 }
