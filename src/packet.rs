@@ -1,3 +1,5 @@
+use serde_derive::{Deserialize, Serialize};
+
 use crate::parser::PacketParser;
 use crate::writer::PacketWriter;
 
@@ -223,8 +225,8 @@ impl DNSQuestion {
 }
 // ________________________________________________ ANSWER _______________________________________________________________
 // DNS Record
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+
 pub enum DNSRecord {
     UNKNOWN {
         domain: String,
@@ -262,6 +264,39 @@ pub enum DNSRecord {
 }
 
 impl DNSRecord {
+    pub fn get_query_type(self) -> QueryType{
+        match self {
+            DNSRecord::A { domain: _, addr: _, ttl: _ } => QueryType::A,
+            DNSRecord::AAAA { domain: _, addr: _, ttl: _ } => QueryType::AAAA,
+            DNSRecord::CNAME { domain: _, host: _, ttl: _ } => QueryType::CNAME,
+            DNSRecord::MX { domain: _, priority: _, host: _, ttl: _ } => QueryType::MX,
+            DNSRecord::NS { domain: _, host: _, ttl: _ } => QueryType::NS,
+            DNSRecord::UNKNOWN { domain: _, qtype: _, data_len: _, ttl: _ } => todo!(),
+        }
+    }
+
+    pub fn get_domain(self) -> Option<String> {
+        match self {
+            DNSRecord::A { domain, addr: _, ttl : _} => Some(domain),
+            DNSRecord::AAAA { domain, addr: _, ttl: _ } => Some(domain),
+            DNSRecord::CNAME { domain, host: _, ttl: _ } => Some(domain),
+            DNSRecord::MX { domain, priority: _, host: _, ttl: _ } => Some(domain),
+            DNSRecord::NS { domain, host: _, ttl: _ } => Some(domain),
+            DNSRecord::UNKNOWN { domain: _, qtype: _, data_len: _, ttl: _ } => None,
+        }
+    }
+
+    pub fn get_ttl(self) -> u32 {
+        match self {
+            DNSRecord::A { domain: _, addr: _, ttl } => ttl,
+            DNSRecord::AAAA { domain: _, addr: _, ttl } => ttl,
+            DNSRecord::CNAME { domain: _, host: _, ttl } => ttl,
+            DNSRecord::MX { domain: _, priority: _, host: _, ttl } => ttl,
+            DNSRecord::NS { domain: _, host: _, ttl } => ttl,
+            DNSRecord::UNKNOWN { domain: _, qtype: _, data_len: _, ttl } => ttl,
+        }
+    }
+    
     pub fn parse_record(parser: &mut PacketParser) -> DNSRecord {
         let domain = parser.parse_qname();
         // print!("Qname: {domain}");
@@ -561,6 +596,8 @@ impl DNSPacket {
     pub fn get_unresolved_ns<'a>(&'a self, qname: &'a str) -> Option<&'a str> {
         self.get_ns(qname).map(|(_, host)| host).next()
     }
+
+    
 
     // Print the packet
     pub fn print_packet(&self) {
