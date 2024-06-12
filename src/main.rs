@@ -16,8 +16,8 @@ use start_servers::init_servers;
 
 
 fn main() {
-    // let _ = init_servers();
-    test_cache();
+    let _ = init_servers();
+    // test_cache();
 }
 
 

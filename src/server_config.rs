@@ -1,5 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
 
+use crate::cache::{Cache, SynchronizedCache};
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ResolveType {
     Recursive,
@@ -13,7 +15,6 @@ pub enum ResolveType {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ServerContext {
-    // pub authority,
     pub dns_port: u16,
     pub dns_host: String,
     pub resolve_strategy: ResolveType,
@@ -21,7 +22,9 @@ pub struct ServerContext {
     pub enable_udp: bool,
     pub enable_tcp: bool,
     pub thread_count: usize,
-    // pub enable_api: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub cache: SynchronizedCache,
+
 }
 
 impl Default for ServerContext {
@@ -33,22 +36,14 @@ impl Default for ServerContext {
 impl ServerContext {
     pub fn new() -> ServerContext {
         ServerContext {
-            // authority: Authority::new(),
-            // cache: SynchronizedCache::new(),
-            // client: Box::new(DnsNetworkClient::new(34255)),
             dns_port: 53,
             dns_host: "0.0.0.0".to_string(),
-            // api_port: 5380,
             resolve_strategy: ResolveType::Recursive,
             allow_recursive: false,
             enable_udp: false,
             enable_tcp: false,
             thread_count: 1,
-            // enable_api: true,
-            // statistics: ServerStatistics {
-            //     tcp_query_count: AtomicUsize::new(0),
-            //     udp_query_count: AtomicUsize::new(0),
-            // },
+            cache: SynchronizedCache::new(),
         }
     }
 }

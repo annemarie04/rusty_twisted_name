@@ -1,5 +1,5 @@
 
-use std::{collections::{BTreeMap, HashMap, HashSet}, hash::{Hash, Hasher}, sync::Arc};
+use std::{collections::{BTreeMap, HashMap, HashSet}, hash::{Hash, Hasher}, sync::{Arc, RwLock}};
 use chrono::{DateTime, Duration, Local};
 use packet::DNSRecord;
 use crate::packet::{self, DNSPacket, QueryType, RCode};
@@ -30,7 +30,7 @@ impl Hash for RecordEntry {
     }
 }
 
-
+#[derive(Debug)]
 pub enum RecordSet {
     NoRecords {
         qtype: QueryType,
@@ -42,7 +42,7 @@ pub enum RecordSet {
         records: HashSet <RecordEntry>,
     },
 }
-
+#[derive(Default, Debug)]
 pub struct DomainEntry {
     pub domain: String,
     pub record_types: HashMap<QueryType, RecordSet>,
@@ -167,7 +167,7 @@ impl DomainEntry {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct Cache {
     pub domain_entries: BTreeMap<String, Arc<DomainEntry>>,
 }
@@ -242,4 +242,57 @@ impl Cache {
         self.domain_entries.insert(qname.to_string(), Arc::new(rs));
 
     }   
+}
+#[derive(Default, Debug)]
+pub struct SynchronizedCache {
+    pub cache: RwLock<Cache>,
+}
+impl Clone for SynchronizedCache {
+    fn clone(&self) -> Self {
+        // Clone the cache by first locking it for reading and then cloning the contents
+        let cache_clone = self.cache.read().unwrap().clone();
+        SynchronizedCache {
+            cache: RwLock::new(cache_clone),
+        }
+    }
+}
+impl SynchronizedCache {
+    pub fn new() -> SynchronizedCache {
+        SynchronizedCache {
+            cache: RwLock::new(Cache::new()),
+        }
+    }
+
+    pub fn list(&self) -> Vec<Arc<DomainEntry>> {
+        let cache = self.cache.read().unwrap();
+
+        let mut list = Vec::new();
+
+        for rs in cache.domain_entries.values() {
+            list.push(rs.clone());
+        }
+
+        list
+    }
+
+    pub fn lookup(&self, qname: &str, qtype: QueryType) -> Option<DNSPacket> {
+        let mut cache = match self.cache.write() {
+            Ok(x) => x,
+            Err(_) => return None,
+        };
+
+        cache.lookup(qname, qtype)
+    }
+
+    pub fn store(&self, records: &[DNSRecord]) {
+        let mut cache = self.cache.write().unwrap();
+
+        cache.store(records);
+    }
+
+    pub fn store_nxdomain(&self, qname: &str, qtype: QueryType, ttl: u32) {
+        let mut cache = self.cache.write().unwrap();
+
+        cache.store_nxdomain(qname, qtype, ttl);
+    }
 }

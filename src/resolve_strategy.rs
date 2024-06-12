@@ -1,9 +1,9 @@
 use std::{net::Ipv4Addr, sync::Arc};
 
-use crate::{packet::{DNSPacket, QueryType, RCode}, recursive_resolver::recursive_lookup, server_config::{ResolveType, ServerContext}, stub_resolver::lookup};
+use crate::{cache::Cache, packet::{DNSPacket, QueryType, RCode}, recursive_resolver::recursive_lookup, server_config::{ResolveType, ServerContext}, stub_resolver::lookup};
 
 // Handles an incoming packet
-pub fn handle_query(mut request: DNSPacket, server_context: Arc<ServerContext>) -> DNSPacket {
+pub fn handle_query(mut request: DNSPacket, mut server_context: Arc<ServerContext>) -> DNSPacket {
     let mut packet = DNSPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_desired = true;
@@ -13,7 +13,10 @@ pub fn handle_query(mut request: DNSPacket, server_context: Arc<ServerContext>) 
     if let Some(question) = request.questions.pop() {
         println!("Received query: {:?}", question);
 
-        if let result = resolve(&question.qname, question.qtype, server_context) {
+        if let Some(some_result) = &server_context.cache.lookup(&question.qname, question.qtype) {
+            println!("Cache hit! for {:?}", &question.qname);
+            let result = some_result.clone();
+
             packet.questions.push(question.clone());
             packet.header.rcode = result.header.rcode;
 
@@ -21,6 +24,27 @@ pub fn handle_query(mut request: DNSPacket, server_context: Arc<ServerContext>) 
                 println!("Answer: {:?}", record);
                 packet.answers.push(record);
             }
+            for record in result.authorities {
+                println!("Authority: {:?}", record);
+                packet.authorities.push(record);
+            }
+
+            for record in result.resources {
+                println!("Resource: {:?}", record);
+                packet.resources.push(record);
+            }
+        }
+        else if let result = resolve(&question.qname, question.qtype, server_context.clone()) {
+            packet.questions.push(question.clone());
+            packet.header.rcode = result.header.rcode;
+
+            for record in result.answers {
+                println!("Answer: {:?}", record);
+                packet.answers.push(record);
+            }
+
+            &server_context.cache.store(&packet.answers);
+            println!("Answers cached for {:?}", &question.qname);
 
             for record in result.authorities {
                 println!("Authority: {:?}", record);

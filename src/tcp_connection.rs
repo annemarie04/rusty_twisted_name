@@ -4,7 +4,7 @@ use std::{
 };
 use rand::{Rng, thread_rng};
 
-use crate::{packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config::ServerContext, stub_resolver, writer::PacketWriter};
+use crate::{cache::Cache, packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config::ServerContext, stub_resolver, writer::PacketWriter};
 
 pub struct TCPServer {
     context: Arc<ServerContext>,
@@ -38,7 +38,6 @@ impl DNSServer for TCPServer {
             self.senders.push(tx);
 
             let context = self.context.clone();
-
             let name = "TCPServer-request-".to_string() + &thread_id.to_string();
             let _worker = match Builder::new().name(name).spawn(move || {
                 loop {

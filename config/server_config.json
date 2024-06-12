@@ -10,5 +10,5 @@
     "allow_recursive": false,
     "enable_udp":true,
     "enable_tcp": false,
-    "thread_count": 19
+    "thread_count": 18
   }

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, io, net::{SocketAddr, UdpSocket}, sync::{atomic::{AtomicBool, Ordering}, mpsc, Arc, Condvar, Mutex}, thread::{self, JoinHandle}, time::Duration};
 
-use crate::{packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config, stub_resolver};
+use crate::{cache::Cache, packet::DNSPacket, parser::PacketParser, resolve_strategy, server::DNSServer, server_config, stub_resolver};
 use crate::writer::PacketWriter;
 use crate::server_config::ServerContext;
 pub struct UDPServer {
@@ -32,7 +32,6 @@ impl DNSServer for UDPServer {
     fn run_server(mut self) {
         
         let is_running = Arc::new(AtomicBool::new(true));
-
         println!("Running UDP server ...");
         // Bind the UDP socket 
         let address = format!("{}:{}", self.context.dns_host, self.context.dns_port);
@@ -54,7 +53,6 @@ impl DNSServer for UDPServer {
             let context = self.context.clone(); // Config Data
             // let request_cond = self.request_cond.clone(); // Condition for blocking threads
             let request_queue = self.request_queue.clone(); // queue with requests
-
             let name = "DNSServer-solving-".to_string() + &thread_id.to_string();
             let builder = thread::Builder::new();
             let _worker = match builder.spawn(move || {
